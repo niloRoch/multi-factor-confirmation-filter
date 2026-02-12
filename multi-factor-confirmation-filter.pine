@@ -1,0 +1,487 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+//@version=6
+indicator("Filtro de Confirmação Multi-Fatores PRO [Suporte Gaussian Bands]", overlay=false)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INPUTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Parâmetros das Médias de Referência
+ema200_period = input.int(200, "Período EMA Principal", minval=1, group="Médias de Referência")
+ma200_period = input.int(200, "Período MA Principal", minval=1, group="Médias de Referência")
+
+// Parâmetros RSI
+rsi_length = input.int(14, "RSI Período", minval=1, group="Momentum")
+rsi_overbought = input.float(70, "RSI Sobrecompra", minval=50, maxval=100, group="Momentum")
+rsi_oversold = input.float(30, "RSI Sobrevenda", minval=0, maxval=50, group="Momentum")
+
+// Parâmetros MACD
+macd_fast = input.int(12, "MACD Rápida", minval=1, group="Momentum")
+macd_slow = input.int(26, "MACD Lenta", minval=1, group="Momentum")
+macd_signal = input.int(9, "MACD Sinal", minval=1, group="Momentum")
+
+// Parâmetros de Tendência
+adx_length = input.int(14, "ADX Período", minval=1, group="Força da Tendência")
+adx_threshold = input.int(25, "ADX Limite (Tendência Forte)", minval=0, group="Força da Tendência")
+
+// Parâmetros de Volume
+volume_ma_length = input.int(20, "Média de Volume", minval=1, group="Volume")
+volume_multiplier = input.float(1.5, "Multiplicador Volume", minval=0.5, step=0.1, group="Volume")
+
+// Parâmetros de Score
+score_threshold = input.float(60, "Score Mínimo para Operação (%)", minval=0, maxval=100, step=5, group="Filtros")
+
+// NOVO: Parâmetros de Volatilidade (ATR)
+atr_length = input.int(14, "ATR Período", minval=1, group="Volatilidade")
+atr_multiplier = input.float(1.5, "ATR Multiplicador (Stop)", minval=0.5, step=0.1, group="Volatilidade")
+
+// NOVO: Filtro de Divergências
+show_divergences = input.bool(true, "Mostrar Divergências RSI", group="Divergências")
+divergence_lookback = input.int(5, "Lookback Divergências", minval=2, maxval=20, group="Divergências")
+
+// NOVO: Modo de Exibição
+show_scores = input.bool(true, "Mostrar Scores no Gráfico", group="Visualização")
+show_strength_meter = input.bool(true, "Mostrar Medidor de Força", group="Visualização")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CÁLCULOS DAS MÉDIAS DE REFERÊNCIA
+// ══════════════════════════════════════════════════════════════════════════════
+
+ema200 = ta.ema(close, ema200_period)
+ma200 = ta.sma(close, ma200_period)
+
+// Direção da tendência principal
+trend_bullish = close > ema200 and close > ma200
+trend_bearish = close < ema200 and close < ma200
+
+// NOVO: Força da tendência baseada em distância
+trend_distance = (close / ema200 - 1) * 100
+trend_strength = math.abs(trend_distance)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INDICADORES DE MOMENTUM
+// ══════════════════════════════════════════════════════════════════════════════
+
+// RSI
+rsi = ta.rsi(close, rsi_length)
+rsi_bullish = rsi > 50 and rsi < rsi_overbought
+rsi_bearish = rsi < 50 and rsi > rsi_oversold
+
+// NOVO: RSI mais refinado com zonas intermediárias
+rsi_strong_bull = rsi > 60 and rsi < rsi_overbought
+rsi_strong_bear = rsi < 40 and rsi > rsi_oversold
+
+// MACD
+[macd_line, signal_line, hist] = ta.macd(close, macd_fast, macd_slow, macd_signal)
+macd_bullish = macd_line > signal_line and hist > 0
+macd_bearish = macd_line < signal_line and hist < 0
+
+// NOVO: MACD crescente/decrescente
+macd_rising = hist > hist[1]
+macd_falling = hist < hist[1]
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FORÇA DA TENDÊNCIA (ADX)
+// ══════════════════════════════════════════════════════════════════════════════
+
+[diplus, diminus, adx] = ta.dmi(adx_length, adx_length)
+strong_trend = adx > adx_threshold
+adx_bullish = diplus > diminus and strong_trend
+adx_bearish = diminus > diplus and strong_trend
+
+// NOVO: ADX em crescimento (tendência se fortalecendo)
+adx_rising = adx > adx[1]
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ANÁLISE DE VOLUME
+// ══════════════════════════════════════════════════════════════════════════════
+
+volume_ma = ta.sma(volume, volume_ma_length)
+high_volume = volume > volume_ma * volume_multiplier
+volume_confirmation = high_volume
+
+// NOVO: Volume crescente
+volume_increasing = volume > volume[1]
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ALINHAMENTO DE MÉDIAS CURTAS
+// ══════════════════════════════════════════════════════════════════════════════
+
+ema9 = ta.ema(close, 9)
+ema21 = ta.ema(close, 21)
+ema50 = ta.ema(close, 50)
+
+// Alinhamento bullish: 9 > 21 > 50
+ema_aligned_bullish = ema9 > ema21 and ema21 > ema50
+// Alinhamento bearish: 9 < 21 < 50
+ema_aligned_bearish = ema9 < ema21 and ema21 < ema50
+
+// NOVO: Separação entre EMAs (força do alinhamento)
+ema_separation = ((ema9 / ema50) - 1) * 100
+ema_strong_alignment = math.abs(ema_separation) > 2
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NOVO: VOLATILIDADE E STOPS
+// ══════════════════════════════════════════════════════════════════════════════
+
+atr = ta.atr(atr_length)
+atr_percent = (atr / close) * 100
+
+// Sugestões de stop baseadas em ATR
+stop_distance_long = close - (atr * atr_multiplier)
+stop_distance_short = close + (atr * atr_multiplier)
+
+// Volatilidade normalizada (0-100)
+atr_normalized = math.min(atr_percent * 10, 100)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NOVO: DETECÇÃO DE DIVERGÊNCIAS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Divergência Bullish (preço faz fundo mais baixo, RSI faz fundo mais alto)
+price_lower_low = ta.lowest(low, divergence_lookback) == low and low < low[divergence_lookback]
+rsi_higher_low = ta.lowest(rsi, divergence_lookback) == rsi and rsi > rsi[divergence_lookback]
+bullish_divergence = price_lower_low and rsi_higher_low and show_divergences
+
+// Divergência Bearish (preço faz topo mais alto, RSI faz topo mais baixo)
+price_higher_high = ta.highest(high, divergence_lookback) == high and high > high[divergence_lookback]
+rsi_lower_high = ta.highest(rsi, divergence_lookback) == rsi and rsi < rsi[divergence_lookback]
+bearish_divergence = price_higher_high and rsi_lower_high and show_divergences
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NOVO: ESTRUTURA DE PREÇO (HIGHER HIGHS/LOWER LOWS)
+// ══════════════════════════════════════════════════════════════════════════════
+
+hh = high > ta.highest(high[1], 10)  // Higher High
+ll = low < ta.lowest(low[1], 10)     // Lower Low
+bullish_structure = hh and not ll
+bearish_structure = ll and not hh
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SISTEMA DE PONTUAÇÃO APRIMORADO
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Score para operações de COMPRA
+buy_score = 0.0
+buy_score := buy_score + (trend_bullish ? 20 : 0)              // Tendência principal (20%)
+buy_score := buy_score + (rsi_strong_bull ? 15 : rsi_bullish ? 10 : 0)  // RSI (10-15%)
+buy_score := buy_score + (macd_bullish ? 10 : 0)              // MACD bullish (10%)
+buy_score := buy_score + (macd_rising ? 5 : 0)                // MACD crescente (5%)
+buy_score := buy_score + (adx_bullish ? 15 : 0)               // ADX confirmando alta (15%)
+buy_score := buy_score + (adx_rising ? 5 : 0)                 // ADX crescente (5%)
+buy_score := buy_score + (volume_confirmation ? 8 : 0)        // Volume alto (8%)
+buy_score := buy_score + (volume_increasing ? 2 : 0)          // Volume crescente (2%)
+buy_score := buy_score + (ema_aligned_bullish ? 10 : 0)       // EMAs alinhadas (10%)
+buy_score := buy_score + (ema_strong_alignment ? 5 : 0)       // Alinhamento forte (5%)
+buy_score := buy_score + (bullish_divergence ? 10 : 0)        // Divergência bullish (10%)
+buy_score := buy_score + (bullish_structure ? 5 : 0)          // Estrutura bullish (5%)
+
+// Score para operações de VENDA
+sell_score = 0.0
+sell_score := sell_score + (trend_bearish ? 20 : 0)            // Tendência principal (20%)
+sell_score := sell_score + (rsi_strong_bear ? 15 : rsi_bearish ? 10 : 0)  // RSI (10-15%)
+sell_score := sell_score + (macd_bearish ? 10 : 0)            // MACD bearish (10%)
+sell_score := sell_score + (macd_falling ? 5 : 0)             // MACD caindo (5%)
+sell_score := sell_score + (adx_bearish ? 15 : 0)             // ADX confirmando baixa (15%)
+sell_score := sell_score + (adx_rising ? 5 : 0)               // ADX crescente (5%)
+sell_score := sell_score + (volume_confirmation ? 8 : 0)      // Volume alto (8%)
+sell_score := sell_score + (volume_increasing ? 2 : 0)        // Volume crescente (2%)
+sell_score := sell_score + (ema_aligned_bearish ? 10 : 0)     // EMAs alinhadas (10%)
+sell_score := sell_score + (ema_strong_alignment ? 5 : 0)     // Alinhamento forte (5%)
+sell_score := sell_score + (bearish_divergence ? 10 : 0)      // Divergência bearish (10%)
+sell_score := sell_score + (bearish_structure ? 5 : 0)        // Estrutura bearish (5%)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SINAIS DE CONFIRMAÇÃO COM QUALIDADE
+// ══════════════════════════════════════════════════════════════════════════════
+
+buy_signal = buy_score >= score_threshold
+sell_signal = sell_score >= score_threshold
+
+// NOVO: Qualidade do sinal
+signal_quality_buy = buy_score >= 80 ? "FORTE" : buy_score >= 70 ? "BOA" : "MODERADA"
+signal_quality_sell = sell_score >= 80 ? "FORTE" : sell_score >= 70 ? "BOA" : "MODERADA"
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VISUALIZAÇÃO
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Linha do Score de Compra
+plot(show_scores ? buy_score : na, "Score Compra", color=color.new(color.green, 0), linewidth=2)
+// Linha do Score de Venda
+plot(show_scores ? sell_score : na, "Score Venda", color=color.new(color.red, 0), linewidth=2)
+
+// Linha de threshold
+hline(score_threshold, "Limite Mínimo", color=color.gray, linestyle=hline.style_dashed)
+hline(50, "Zona Neutra", color=color.gray, linestyle=hline.style_dotted)
+hline(80, "Sinal Forte", color=color.yellow, linestyle=hline.style_dotted)
+
+// Background colorido para zonas de operação
+buy_bg_color = buy_signal and buy_score >= 80 ? color.new(color.green, 85) : buy_signal ? color.new(color.green, 92) : na
+sell_bg_color = sell_signal and sell_score >= 80 ? color.new(color.red, 85) : sell_signal ? color.new(color.red, 92) : na
+
+bgcolor(buy_bg_color, title="Zona de Compra")
+bgcolor(sell_bg_color, title="Zona de Venda")
+
+// NOVO: Marcadores de divergências
+plotshape(bullish_divergence, "Div. Bullish", shape.triangleup, location.bottom, 
+          color.new(color.lime, 0), size=size.small)
+plotshape(bearish_divergence, "Div. Bearish", shape.triangledown, location.top, 
+          color.new(color.fuchsia, 0), size=size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PAINEL DE INFORMAÇÕES COMPLETO
+// ══════════════════════════════════════════════════════════════════════════════
+
+if barstate.islast
+    // Tabela principal expandida
+    var table info_table = table.new(position.top_right, 3, 14, 
+                                      border_width=2, 
+                                      border_color=color.rgb(40, 40, 40),
+                                      frame_color=color.rgb(50, 50, 50),
+                                      frame_width=2)
+    
+    // CABEÇALHO PRINCIPAL
+    table.cell(info_table, 0, 0, "📊 ANÁLISE MULTI-FATORES PRO", 
+              bgcolor=color.rgb(30, 30, 30), 
+              text_color=color.white, 
+              text_size=size.normal,
+              text_halign=text.align_center)
+    table.merge_cells(info_table, 0, 0, 2, 0)
+    
+    // CABEÇALHOS DAS COLUNAS
+    table.cell(info_table, 0, 1, "INDICADOR", 
+              bgcolor=color.rgb(60, 60, 60), 
+              text_color=color.white, 
+              text_size=size.small,
+              text_halign=text.align_left)
+    table.cell(info_table, 1, 1, "VALOR", 
+              bgcolor=color.rgb(60, 60, 60), 
+              text_color=color.white, 
+              text_size=size.small,
+              text_halign=text.align_center)
+    table.cell(info_table, 2, 1, "STATUS", 
+              bgcolor=color.rgb(60, 60, 60), 
+              text_color=color.white, 
+              text_size=size.small,
+              text_halign=text.align_center)
+    
+    // TENDÊNCIA PRINCIPAL (20%)
+    trend_status = trend_bullish ? "✓ ALTA" : trend_bearish ? "✓ BAIXA" : "○ LATERAL"
+    trend_color = trend_bullish ? color.new(color.green, 60) : trend_bearish ? color.new(color.red, 60) : color.new(color.gray, 80)
+    trend_value = str.tostring(math.round(trend_distance, 2)) + "%"
+    
+    table.cell(info_table, 0, 2, "Tendência 200", text_size=size.small, text_halign=text.align_left)
+    table.cell(info_table, 1, 2, trend_value, text_size=size.small, text_halign=text.align_center)
+    table.cell(info_table, 2, 2, trend_status, bgcolor=trend_color, text_size=size.small, text_halign=text.align_center)
+    
+    // RSI (10-15%)
+
+    rsi_status = (
+        rsi_strong_bull ? "✓✓ BULL" :
+        rsi_bullish ? "✓ BULL" :
+        rsi_strong_bear ? "✓✓ BEAR" :
+        rsi_bearish ? "✓ BEAR" :
+        "○ NEUTRO"
+    )
+
+    rsi_color = (
+        rsi_strong_bull ? color.new(color.green, 50) :
+        rsi_bullish ? color.new(color.green, 70) :
+        rsi_strong_bear ? color.new(color.red, 50) :
+        rsi_bearish ? color.new(color.red, 70) :
+        color.new(color.gray, 80)
+    )
+
+    // Arredondamento seguro para 1 casa decimal
+    rsi_value = str.tostring(math.round(rsi * 10) / 10)
+
+    // Atualização da tabela
+    table.cell(info_table, 0, 3, "RSI (14)", text_size=size.small, text_halign=text.align_left)
+    table.cell(info_table, 1, 3, rsi_value, text_size=size.small, text_halign=text.align_center)
+    table.cell(info_table, 2, 3, rsi_status, bgcolor=rsi_color, text_size=size.small, text_halign=text.align_center)
+    
+    // MACD (10-15%)
+    macd_status = macd_bullish and macd_rising ? "✓✓ BULL" : macd_bullish ? "✓ BULL" : 
+                  macd_bearish and macd_falling ? "✓✓ BEAR" : macd_bearish ? "✓ BEAR" : "○ NEUTRO"
+    macd_color = macd_bullish and macd_rising ? color.new(color.green, 50) : macd_bullish ? color.new(color.green, 70) : 
+                 macd_bearish and macd_falling ? color.new(color.red, 50) : macd_bearish ? color.new(color.red, 70) : color.new(color.gray, 80)
+    macd_value = str.tostring(math.round(hist, 3))
+    
+    table.cell(info_table, 0, 4, "MACD Hist", text_size=size.small, text_halign=text.align_left)
+    table.cell(info_table, 1, 4, macd_value, text_size=size.small, text_halign=text.align_center)
+    table.cell(info_table, 2, 4, macd_status, bgcolor=macd_color, text_size=size.small, text_halign=text.align_center)
+    
+    // ADX (15-20%)
+    adx_status = adx_bullish and adx_rising ? "✓✓ ALTA" : adx_bullish ? "✓ ALTA" : 
+                 adx_bearish and adx_rising ? "✓✓ BAIXA" : adx_bearish ? "✓ BAIXA" : "○ FRACO"
+    adx_color = adx_bullish ? color.new(color.green, 60) : adx_bearish ? color.new(color.red, 60) : color.new(color.gray, 80)
+    adx_value = str.tostring(math.round(adx, 1))
+    
+    table.cell(info_table, 0, 5, "ADX (14)", text_size=size.small, text_halign=text.align_left)
+    table.cell(info_table, 1, 5, adx_value, text_size=size.small, text_halign=text.align_center)
+    table.cell(info_table, 2, 5, adx_status, bgcolor=adx_color, text_size=size.small, text_halign=text.align_center)
+    
+    // VOLUME (8-10%)
+
+    vol_status = (
+        volume_confirmation and volume_increasing ? "✓✓ ALTO" :
+        volume_confirmation ? "✓ ALTO" :
+        "○ BAIXO"
+    )
+
+    vol_color = (
+        volume_confirmation and volume_increasing ? color.new(color.green, 50) :
+        volume_confirmation ? color.new(color.green, 70) :
+        color.new(color.gray, 80)
+    )
+
+    // Arredondamento seguro para 2 casas decimais
+    vol_ratio = volume / volume_ma
+    vol_value = str.tostring(math.round(vol_ratio * 100) / 100) + "x"
+
+    // Atualização da tabela
+    table.cell(info_table, 0, 6, "Volume", text_size=size.small, text_halign=text.align_left)
+    table.cell(info_table, 1, 6, vol_value, text_size=size.small, text_halign=text.align_center)
+    table.cell(info_table, 2, 6, vol_status, bgcolor=vol_color, text_size=size.small, text_halign=text.align_center)
+
+    // EMAs (10-15%)
+    ema_status = ema_aligned_bullish and ema_strong_alignment ? "✓✓ BULL" : ema_aligned_bullish ? "✓ BULL" : 
+                 ema_aligned_bearish and ema_strong_alignment ? "✓✓ BEAR" : ema_aligned_bearish ? "✓ BEAR" : "○ NEUTRO"
+    ema_color = ema_aligned_bullish ? color.new(color.green, 60) : ema_aligned_bearish ? color.new(color.red, 60) : color.new(color.gray, 80)
+    ema_value = str.tostring(math.round(ema_separation, 2)) + "%"
+    
+    table.cell(info_table, 0, 7, "EMAs 9/21/50", text_size=size.small, text_halign=text.align_left)
+    table.cell(info_table, 1, 7, ema_value, text_size=size.small, text_halign=text.align_center)
+    table.cell(info_table, 2, 7, ema_status, bgcolor=ema_color, text_size=size.small, text_halign=text.align_center)
+    
+    // NOVO: ATR / VOLATILIDADE
+    atr_status = atr_percent > 3 ? "ALTA" : atr_percent > 1.5 ? "MÉDIA" : "BAIXA"
+    atr_color = atr_percent > 3 ? color.new(color.orange, 60) : atr_percent > 1.5 ? color.new(color.yellow, 70) : color.new(color.green, 80)
+    atr_value = str.tostring(math.round(atr_percent, 2)) + "%"
+    
+    table.cell(info_table, 0, 8, "Volatilidade", text_size=size.small, text_halign=text.align_left)
+    table.cell(info_table, 1, 8, atr_value, text_size=size.small, text_halign=text.align_center)
+    table.cell(info_table, 2, 8, atr_status, bgcolor=atr_color, text_size=size.small, text_halign=text.align_center)
+    
+    // NOVO: DIVERGÊNCIAS
+    div_status = bullish_divergence ? "✓ BULL" : bearish_divergence ? "✓ BEAR" : "○ NENHUMA"
+    div_color = bullish_divergence ? color.new(color.lime, 60) : bearish_divergence ? color.new(color.fuchsia, 60) : color.new(color.gray, 80)
+    
+    table.cell(info_table, 0, 9, "Divergências", text_size=size.small, text_halign=text.align_left)
+    table.cell(info_table, 1, 9, "-", text_size=size.small, text_halign=text.align_center)
+    table.cell(info_table, 2, 9, div_status, bgcolor=div_color, text_size=size.small, text_halign=text.align_center)
+    
+    // NOVO: ESTRUTURA DE PREÇO
+    struct_status = bullish_structure ? "✓ BULL" : bearish_structure ? "✓ BEAR" : "○ NEUTRO"
+    struct_color = bullish_structure ? color.new(color.green, 60) : bearish_structure ? color.new(color.red, 60) : color.new(color.gray, 80)
+    
+    table.cell(info_table, 0, 10, "Estrutura", text_size=size.small, text_halign=text.align_left)
+    table.cell(info_table, 1, 10, "-", text_size=size.small, text_halign=text.align_center)
+    table.cell(info_table, 2, 10, struct_status, bgcolor=struct_color, text_size=size.small, text_halign=text.align_center)
+    
+    // SEPARADOR
+    table.cell(info_table, 0, 11, "━━━━━━━━━━━━━━━━━", 
+              bgcolor=color.rgb(40, 40, 40),
+              text_color=color.gray,
+              text_size=size.small,
+              text_halign=text.align_center)
+    table.merge_cells(info_table, 0, 11, 2, 11)
+    
+    // SCORE E SINAL FINAL
+    final_score = buy_signal ? buy_score : sell_signal ? sell_score : math.max(buy_score, sell_score)
+    final_quality = buy_signal ? signal_quality_buy : sell_signal ? signal_quality_sell : "-"
+    final_direction = buy_signal ? "🟢 COMPRA" : sell_signal ? "🔴 VENDA" : "⚪ AGUARDAR"
+    final_color = buy_signal ? color.new(color.green, 40) : sell_signal ? color.new(color.red, 40) : color.new(color.orange, 60)
+    final_text_color = buy_signal or sell_signal ? color.white : color.gray
+    
+    score_text = str.tostring(math.round(final_score)) + "%"
+    signal_text = final_direction + " • " + score_text
+    
+    table.cell(info_table, 0, 12, signal_text, 
+              bgcolor=final_color, 
+              text_color=final_text_color, 
+              text_size=size.large,
+              text_halign=text.align_center)
+    table.merge_cells(info_table, 0, 12, 2, 12)
+    
+    // NOVO: QUALIDADE E STOP SUGERIDO
+    quality_text = "Qualidade: " + final_quality
+    stop_value = buy_signal ? str.tostring(math.round(stop_distance_long, 2)) : 
+                 sell_signal ? str.tostring(math.round(stop_distance_short, 2)) : "-"
+    stop_text = "Stop Sugerido: " + stop_value
+    
+    table.cell(info_table, 0, 13, quality_text + " | " + stop_text, 
+              bgcolor=color.rgb(50, 50, 50),
+              text_color=color.gray,
+              text_size=size.small,
+              text_halign=text.align_center)
+    table.merge_cells(info_table, 0, 13, 2, 13)
+
+// NOVO: Medidor de Força Visual
+if show_strength_meter and barstate.islast
+    var table strength_meter = table.new(position.top_left, 11, 3,
+                                          border_width=1,
+                                          border_color=#ffffff,
+                                          frame_color=#ffffff,
+                                          frame_width=1)
+    
+    table.cell(strength_meter, 0, 0, "FORÇA DO SINAL", bgcolor=color.rgb(40, 40, 40), 
+              text_color=color.white, text_size=size.small, text_halign=text.align_center)
+    table.merge_cells(strength_meter, 0, 0, 10, 0)
+    
+    // Barra de compra (verde)
+    for i = 0 to 10
+        cell_color = buy_score >= (i * 10) ? color.new(color.green, 30) : color.new(color.gray, 90)
+        table.cell(strength_meter, i, 1, "", bgcolor=cell_color, text_size=size.tiny)
+    
+    // Barra de venda (vermelha)
+    for i = 0 to 10
+        cell_color = sell_score >= (i * 10) ? color.new(color.red, 30) : color.new(color.gray, 90)
+        table.cell(strength_meter, i, 2, "", bgcolor=cell_color, text_size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ALERTAS APRIMORADOS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// IMPORTANTE: Certifique-se de ter estes plots no script:
+// plot(buy_score, display=display.none)
+// plot(sell_score, display=display.none)
+// plot(stop_distance_long, display=display.none)
+// plot(stop_distance_short, display=display.none)
+
+alertcondition(
+    buy_signal and buy_score >= 80,
+    title="🔥 Sinal de Compra FORTE",
+    message="🔥 COMPRA FORTE - Score: {{plot_0}}% | Stop: {{plot_2}}"
+)
+
+alertcondition(
+    buy_signal and buy_score < 80,
+    title="✓ Sinal de Compra",
+    message="✓ COMPRA - Score: {{plot_0}}%"
+)
+
+alertcondition(
+    sell_signal and sell_score >= 80,
+    title="🔥 Sinal de Venda FORTE",
+    message="🔥 VENDA FORTE - Score: {{plot_1}}% | Stop: {{plot_3}}"
+)
+
+alertcondition(
+    sell_signal and sell_score < 80,
+    title="✓ Sinal de Venda",
+    message="✓ VENDA - Score: {{plot_1}}%"
+)
+
+alertcondition(
+    bullish_divergence,
+    title="📈 Divergência Bullish Detectada",
+    message="📈 DIVERGÊNCIA BULLISH - Possível reversão de alta"
+)
+
+alertcondition(
+    bearish_divergence,
+    title="📉 Divergência Bearish Detectada",
+    message="📉 DIVERGÊNCIA BEARISH - Possível reversão de baixa"
+)

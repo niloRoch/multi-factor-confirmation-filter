@@ -4,11 +4,11 @@
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![Version](https://img.shields.io/badge/version-1.0.0-orange)]()
 
-> Sistema avançado de confirmação multi-fatores para análise técnica com suporte a Gaussian Bands e detecção inteligente de sinais de trading.
+> Sistema de confirmação multi-fatores para análise técnica com suporte a Gaussian Bands e detecção inteligente de sinais de trading.
 
 ## 🎯 Visão Geral
 
-O **Multi-Factor Confirmation Filter PRO** é um indicador completo para TradingView que combina múltiplos fatores técnicos para gerar sinais de alta confiabilidade. Utilizando um sistema de pontuação ponderado, o indicador avalia tendência, momentum, volume, volatilidade e estrutura de preço para identificar as melhores oportunidades de trading.
+O **Multi-Factor Confirmation Filter** é um indicador completo para TradingView que combina múltiplos fatores técnicos para gerar sinais de alta confiabilidade. Utilizando um sistema de pontuação ponderado, o indicador avalia tendência, momentum, volume, volatilidade e estrutura de preço para identificar as melhores oportunidades de trading.
 
 ### ✨ Características Principais
 

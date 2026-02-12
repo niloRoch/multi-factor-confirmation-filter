@@ -1,4 +1,4 @@
-# 📊 Multi-Factor Confirmation Filter PRO
+# 📊 Multi-Factor Confirmation Filter
 
 [![TradingView](https://img.shields.io/badge/TradingView-Pine%20Script%20v6-blue)](https://www.tradingview.com/)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
